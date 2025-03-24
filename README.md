@@ -56,10 +56,10 @@ The `bans.json` file stores banned licenses and IPs. It’s auto-generated but c
 ```json
 {
     "licenses": {
-        "license:03831582c67e91338c580198b3758ffe2fb617e4": true
+        "license:XXXXXXXX": true
     },
     "ips": {
-        "ip:26.55.118.146": true
+        "ip:XXXXXXX": true
     }
 }
 ```
