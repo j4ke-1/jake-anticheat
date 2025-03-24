@@ -32,8 +32,8 @@
   ```
   Example:
   ```
-  /unbancheat license:03831582c67e91338c580198b3758ffe2fb617e4
-  /unbancheat ip:26.55.118.146
+  /unbancheat license:XXXXXXXX
+  /unbancheat ip:XXXXXXXX
   ```
 
 ## Configuration
