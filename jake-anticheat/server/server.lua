@@ -4,8 +4,9 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local blacklistedItems = { "INSERT ITEMS HERE" } -- Table of blacklisted items
 local webhookURL = "INSERT WEBHOOK HERE"
 local banReasonPrefix = "Possessing blacklisted item: "
+local banReasonHackedWeapon = "Using hacked weapon not in inventory"
 
--- In-memory ban list (initialized with sub-tables)
+-- In-memory ban list
 local bannedPlayers = {
     licenses = {},
     ips = {}
@@ -17,7 +18,6 @@ local function loadBans()
     if file then
         local loadedBans = json.decode(file)
         if loadedBans and type(loadedBans) == "table" then
-            -- Ensure loaded data has the correct structure
             bannedPlayers.licenses = loadedBans.licenses or {}
             bannedPlayers.ips = loadedBans.ips or {}
             print("[DEBUG] Loaded bans from bans.json: " .. json.encode(bannedPlayers))
@@ -53,6 +53,12 @@ end
 -- Check inventory for blacklisted items
 RegisterNetEvent('qb-anticheat:server:checkInventory', function()
     local src = source
+    print("[DEBUG] Event triggered for source: " .. tostring(src))
+    if not src or src <= 0 then
+        print("[DEBUG] Invalid source ID: " .. tostring(src))
+        return
+    end
+
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then 
         print("[DEBUG] Player not found for source: " .. src)
@@ -70,15 +76,13 @@ RegisterNetEvent('qb-anticheat:server:checkInventory', function()
                 }
                 local banReason = banReasonPrefix .. bannedItem
 
-                -- Add player to ban list (both license and IP)
                 bannedPlayers.licenses[identifiers.license] = true
                 if identifiers.ip then
                     bannedPlayers.ips[identifiers.ip] = true
                 end
                 print("[DEBUG] Added to ban list - License: " .. identifiers.license .. ", IP: " .. (identifiers.ip or "N/A"))
-                saveBans() -- Persist the ban
+                saveBans()
 
-                -- Log to Discord with detailed info
                 local message = string.format(
                     "Player **%s** (ID: %d) was permanently banned for possessing **%s**.\n" ..
                     "Identifiers:\n- License: %s\n- Discord: %s\n- IP: %s",
@@ -91,14 +95,79 @@ RegisterNetEvent('qb-anticheat:server:checkInventory', function()
                 )
                 sendToDiscord("Anti-Cheat", message, 16711680)
 
-                -- Kick the player
                 DropPlayer(src, "You have been permanently banned for: " .. banReason .. "\nCheck our Discord for more info: discord.gg/inverserp")
-
-                return -- Exit after banning to avoid multiple bans in one check
+                return
             end
         end
     end
 end)
+
+-- Check for hacked weapons in hand
+RegisterNetEvent('qb-anticheat:server:checkWeaponInHand', function(currentWeapon)
+    local src = source
+    if not src or src <= 0 then
+        print("[DEBUG] Invalid source ID for weapon check: " .. tostring(src))
+        return
+    end
+
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then 
+        print("[DEBUG] Player not found for weapon check source: " .. src)
+        return 
+    end
+
+    local inventory = Player.PlayerData.items
+    local weaponInInventory = false
+    local weaponName = GetWeaponNameFromHash(currentWeapon)
+
+    -- Check if the weapon in hand is in the inventory
+    for _, item in pairs(inventory) do
+        if item.name == weaponName then
+            weaponInInventory = true
+            break
+        end
+    end
+
+    -- Ban if weapon is not in inventory
+    if not weaponInInventory and weaponName then
+        local identifiers = {
+            license = QBCore.Functions.GetIdentifier(src, 'license'),
+            discord = QBCore.Functions.GetIdentifier(src, 'discord'),
+            ip = QBCore.Functions.GetIdentifier(src, 'ip')
+        }
+
+        bannedPlayers.licenses[identifiers.license] = true
+        if identifiers.ip then
+            bannedPlayers.ips[identifiers.ip] = true
+        end
+        print("[DEBUG] Added to ban list for hacked weapon - License: " .. identifiers.license .. ", IP: " .. (identifiers.ip or "N/A"))
+        saveBans()
+
+        local message = string.format(
+            "Player **%s** (ID: %d) was permanently banned for using hacked weapon **%s** not in inventory.\n" ..
+            "Identifiers:\n- License: %s\n- Discord: %s\n- IP: %s",
+            GetPlayerName(src),
+            src,
+            weaponName,
+            identifiers.license or "N/A",
+            identifiers.discord or "N/A",
+            identifiers.ip or "N/A"
+        )
+        sendToDiscord("Anti-Cheat", message, 16711680)
+
+        DropPlayer(src, "You have been permanently banned for: " .. banReasonHackedWeapon .. "\nCheck our Discord for more info: discord.gg/inverserp")
+    end
+end)
+
+-- Utility function to get weapon name from hash (approximation)
+function GetWeaponNameFromHash(weaponHash)
+    for _, weapon in pairs(QBCore.Shared.Weapons) do
+        if GetHashKey(weapon.name) == weaponHash then
+            return weapon.name
+        end
+    end
+    return nil -- Unknown weapon
+end
 
 -- Check for bans on player join
 AddEventHandler('playerConnecting', function(playerName, setKickReason, deferrals)
@@ -108,15 +177,15 @@ AddEventHandler('playerConnecting', function(playerName, setKickReason, deferral
     local ip = QBCore.Functions.GetIdentifier(src, 'ip')
 
     if (license and bannedPlayers.licenses[license]) or (ip and bannedPlayers.ips[ip]) then
-        deferrals.done("You are permanently banned for a blacklisted item.\nCheck our Discord for more info: discord.gg/inverserp")
+        deferrals.done("You are permanently banned for a blacklisted item or hacked weapon.\nCheck our Discord for more info: discord.gg/inverserp")
     else
         deferrals.done()
     end
 end)
 
--- Unban command (can unban by license or IP)
+-- Unban command
 RegisterCommand('unbancheat', function(source, args, rawCommand)
-    if source ~= 0 then -- Restrict to server console or admins
+    if source ~= 0 then
         local Player = QBCore.Functions.GetPlayer(source)
         if not Player or not QBCore.Functions.HasPermission(source, 'admin') then
             TriggerClientEvent('chatMessage', source, '^1You do not have permission to use this command.')
@@ -132,14 +201,12 @@ RegisterCommand('unbancheat', function(source, args, rawCommand)
     local identifier = args[1]
     local unbanned = false
 
-    -- Check if it's a license
     if bannedPlayers.licenses[identifier] then
         bannedPlayers.licenses[identifier] = nil
         unbanned = true
         print("[DEBUG] Unbanned license: " .. identifier)
     end
 
-    -- Check if it's an IP
     if bannedPlayers.ips[identifier] then
         bannedPlayers.ips[identifier] = nil
         unbanned = true
@@ -147,8 +214,8 @@ RegisterCommand('unbancheat', function(source, args, rawCommand)
     end
 
     if unbanned then
-        saveBans() -- Update the file
-        sendToDiscord("Anti-Cheat", "Player with identifier **" .. identifier .. "** has been unbanned by an admin.", 65280) -- Green color
+        saveBans()
+        sendToDiscord("Anti-Cheat", "Player with identifier **" .. identifier .. "** has been unbanned by an admin.", 65280)
     else
         print("[ERROR] No ban found for identifier: " .. identifier)
     end
