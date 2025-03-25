@@ -1,6 +1,6 @@
-# jake-antiCheat
+# jake-anticheat
 
-**jake-antiCheat** is a lightweight anti-cheat script for FiveM servers running the QB-Core framework. Designed to detect and ban players for possessing blacklisted items or using hacked weapons, this script ensures fair gameplay without requiring a database. It combines server-side logic with client-side monitoring for robust protection.
+**jake-anticheat** is a lightweight anti-cheat script for FiveM servers running the QB-Core framework. Designed to detect and ban players for possessing blacklisted items or using hacked weapons, this script ensures fair gameplay without requiring a database. It combines server-side logic with client-side monitoring for robust protection.
 
 ## Features
 - **Multi-Item Detection**: Monitors player inventories for configurable blacklisted items (e.g., `weapon_redarp`, `weapon_blueglocks`, `weapon_redm4a1`).
